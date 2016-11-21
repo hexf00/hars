@@ -14,8 +14,10 @@ A .har file-based replication / replay / local / offline server.
 
 ##运行 Running
 
-1.
+1. 
+
     node --harmony index.js [harPath]
+
 
 1. Open `http://127.0.0.1:5920` in browser
 
