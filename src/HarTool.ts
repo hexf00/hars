@@ -1,7 +1,9 @@
-import { Har as HarFormat } from "har-format"
+import { Har as HarFormat, Entry, Har } from "har-format"
 import path from 'path'
 import url from 'url'
 import fs, { stat } from 'fs'
+import request from 'request'
+import { resolve } from "dns"
 
 export default class HarTool {
   public raw: HarFormat
@@ -14,14 +16,13 @@ export default class HarTool {
   }
 
   mkdir(dir: string) {
-
     if (fs.existsSync(dir)) {
       return
-    }
-    if (fs.existsSync(path.dirname(dir))) {
-      fs.mkdirSync(dir)
     } else {
-      this.mkdir(path.dirname(dir))
+      if (!fs.existsSync(path.dirname(dir))) {
+        this.mkdir(path.dirname(dir))
+      }
+      fs.mkdirSync(dir)
     }
   }
 
@@ -46,40 +47,80 @@ export default class HarTool {
         fs.unlinkSync(fullPath)
       }
     })
-    fs.rmdirSync(dir, { recursive: true })
+    fs.rmdirSync(dir)
   }
 
   exportEntryToFile(entry: { url: string; fileName: string; fileExt: string; mineType: string; fileDir: string; size: number; content: Buffer | undefined }) {
-
-
-
     this.mkdir(path.join(this.outPath, entry.fileDir))
-
     const fullPath = path.join(this.outPath, entry.fileDir, entry.fileName + (entry.fileExt === "" ? this.mineToExt(entry.mineType) : ""))
+    fs.writeFileSync(fullPath, entry.content);
+  }
 
-    console.log(path.join(this.outPath, entry.fileDir), "--", fullPath);
-    // fs.writeFileSync(fullPath, entry.content);
+  async downloadFile(url: string) {
+    return new Promise((resolve, reject) => {
 
-    // console.log(fullPath)
+      console.log("downloadFile", url)
+      request.get(url, (error, response, body) => {
+        if (error) {
+          reject(error)
+        } else {
+          if (response.statusCode == 200) {
+            resolve(body)
+          } else {
 
-    // if (!entry.fileExt) {
+            reject("出错了" + url);
+          }
+        }
+      })
+    })
 
-    // }
-    // console.log(entry.fileDir, entry.fileName)
+  }
+
+  async checkSourceMap(entry: Entry) {
+    // 应该做一个缓存 有的sourceMap文件特别大 可能多大20M
+
+    // 2048
+    const text = entry.response.content.text?.substr(-2048) || "";
+    const flag = "//# sourceMappingURL="
+    const startIndex = text.lastIndexOf(flag)
+
+    if (startIndex === -1) {
+      console.log("没有sourceMap文件", entry.request.url);
+    } else {
+      let urlObj = url.parse(entry.request.url)
+      if (urlObj.pathname) {
+        let pathObj = path.parse(urlObj.pathname)
+
+        let sourceMapPath = text.substr(startIndex + flag.length);
+        let sourceMapFullUrl = `${urlObj.protocol}//${urlObj.host}${pathObj.dir}${sourceMapPath}`;
+
+        console.log(sourceMapFullUrl)
+        let body = await this.downloadFile(sourceMapFullUrl)
+
+        // console.log(body)
+
+
+        this.mkdir(path.join(this.outPath, pathObj.dir))
+        const fullPath = path.join(this.outPath, pathObj.dir, sourceMapPath)
+
+        // console.log(fullPath)
+        fs.writeFileSync(fullPath, body);
+      }
+    }
+
+
   }
 
   exportEntriesToFile() {
     this.clearPath(this.outPath)
+    const entries = this.raw.log.entries
 
-    this.raw.log.entries.forEach(entry => {
+    entries.forEach(async entry => {
       const status = entry.response.status;
-
-
       if (status === 200 || status === 304) {
         const urlObj = url.parse(entry.request.url)
         if (urlObj.pathname) {
           const urlPathObj = path.parse(urlObj.pathname);
-
 
           let content;
           if (entry.response.content.text) {
@@ -89,6 +130,9 @@ export default class HarTool {
               }
             } else {
               content = Buffer.from(entry.response.content.text)
+            }
+            if (entry.response.content.mimeType === "application/javascript") {
+              await this.checkSourceMap(entry)
             }
           }
 
@@ -110,23 +154,7 @@ export default class HarTool {
       } else {
         // 301 302 等
       }
-
-
-
-      //   console.log(urlPathObj.base) //文件名
-      //   console.log(entry.response.status)
-      //   console.log(entry.response.content.mimeType)
-      //   console.log(entry.response.content.encoding)
-      //   console.log(entry.response.content.size)
-      // } else {
-      //   console.log("异常的urlObj", urlObj);
-      // }
-
-
-
     })
-
   }
-
 
 }

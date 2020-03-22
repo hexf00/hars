@@ -30,6 +30,8 @@
   "devDependencies": {
     "@types/har-format": "^1.2.4",
     "@types/node": "^13.9.2",
+    "@types/request": "^2.48.4",
+    "request": "^2.88.2",
     "ts-node": "^8.7.0",
     "typescript": "^3.8.3"
   }
